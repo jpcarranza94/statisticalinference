@@ -1,0 +1,170 @@
+---
+title: "Statistical inference with the GSS data"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(statsr)
+library(nortest)
+```
+
+### Load data
+
+```{r load-data}
+load("gss.Rdata")
+```
+
+* * *
+
+## Part 1: Data
+
+The GSS or General Social Survey is conducted since 1972 in the US by the Universitiy of Chicago. It aims to portray the trends in social attitudes, behaviors and attributes for the US population. The data recollected by this survey is attained by acquiring a random sample utilizing a proportional sample technique. Selected participants are interviewed face-to-face and respond to the questions in the survey. Since the sample is attained from the whole US population and through a random selection of subjects, we can say that the results are generalizable to the US population. This is an observational study which does not use random assignment, which means we can't infer causality from any statistical analysis made from this data set. 
+
+* * *
+
+## Part 2: Research question
+Is there a statistically significant difference in the mean socioeconomic index for each marital status? 
+
+This research question aims to find if there are any differences in the SIE between the population with different marital status. This can help identify how marital status has an effect on the general social and economic possibilities for the US population.
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+First, to identify such differences in  SIE we must perform an exploratory data analysis on the variables involved in answering our research question. The SIE wasn't measured on every year of the GSS, so the scope of this analysis will only apply to years 1988 through 2010. Taking this into account let's proceed:
+
+In this research question the explanatory variable is marital status and the response variable is SIE. Since marital status is our categorical variable and SIE is a numerical variable we will be conducting an ANOVA to find if there are statistically significant differences in the means of each category for marital status. To conduct an ANOVA we know that we must fulfill the following requirements:
+
+- Indepence: If sampled data are less than 10% of the population this conditions is satisfied
+
+- Approximately normal: We must check for normality in the distribuions for each category from our qualitative variable. This can be done with a normality test or visually with a Q-Q plot.
+
+- Constant variance: We must check that variance is about equal within and from one group to the next. This can be done visually with a side by side Box plot.  
+
+The necessary statistical analysis and representations will be conducted to check for these conditions.
+
+```{r}
+#First create a seperate data frame for the necessary variables
+
+seianalysis <- gss %>%
+  select(sei, marital)%>%
+  filter( !is.na(sei), !is.na(marital))
+#Summary statistics for 
+summary(seianalysis)
+
+#Create summary statistics for SEI grouped by sex
+seianalysis %>%
+  group_by(marital)%>%
+  summarize( meansei = mean(sei), sdsei = sd(sei), medsei = median(sei), iqrsei = IQR(sei), minsei = min(sei), maxsei = max(sei))
+
+```
+
+With this data we can observe that there are different means for each different marital status. SEI is highest on married respondants, where is it is the least on seperated individuals. We can observe that standard deviation is pretty similar between all groups. There are noticeable differences on medians. There are boundaries for the minimum SEI and maximum SEI, which establishes a limit to possible outliers in our data.
+
+In the next chart the distribution for our categorical variable, marital status, will be represented:
+
+```{r}
+seianalysis %>%
+  ggplot(aes( x = marital)) + geom_bar(fill = "steelblue") + labs( title = "Marital status in GSS")
+```
+
+
+To check for our normality condition in the ANOVA test, it is necessary to visualize the distributions for each of the categories.
+
+```{r}
+#Histograms for each marital status using facet wrap
+seianalysis %>%
+  ggplot( aes( x = sei)) + geom_histogram(bins = 12, fill = "steelblue") + facet_wrap(~marital) + labs( title = "Distributions for SEI for each marital status")
+
+#QQ plots for untransformed data using facet wrap
+
+seianalysis %>%
+  ggplot( aes(sample = sei)) + stat_qq()+ stat_qq_line() + facet_wrap(~marital) + labs ( title = "QQ plots for SEI for each marital status")
+
+```
+
+
+We can observe that there is a right skewed distribution for SEI in each marital status. We can proceed with our ANOVA analysis according to these plots due to the sample size for each category being above 1000. Checking for normality is specially important when sample sizes are small. Since all of our distributions seem to follow a right skewed distribution we will perform a log transformation to normalize the data in order to check true for the normality condition for an ANOVA test.
+
+```{r}
+
+seianalysis %>%
+  ggplot( aes( x = sei)) + geom_histogram(bins = 9, fill = "steelblue") + facet_wrap(~marital) + scale_x_log10() + labs (title = "Distributions for SEI after log10 transformation")
+
+seianalysis <-seianalysis %>%
+  mutate( logsei = log10(sei))
+
+seianalysis %>%
+  ggplot( aes(sample = logsei)) + stat_qq()+ stat_qq_line() + facet_wrap(~marital) + labs(title = "QQ plots for SEI after log10 transformation")
+  
+```
+
+As you can see, after applying a log 10 trasnformation, the data in general looks more normal, such is the case with the QQ plots. 
+
+
+Next we will visualize our data in a side by side box-plot to check for variance between our data.
+
+
+```{r}
+seianalysis %>%
+  ggplot( aes( x = marital, y = sei)) + geom_boxplot() + labs( title = "SEI for each marital status")
+
+seianalysis %>%
+  ggplot( aes( x = marital, y = logsei)) + geom_boxplot() + labs( title = "logSEI for each marital status")
+
+```
+
+From this boxplot we can see that our data mostly follows the samme pattern, with similar IQR ranges between all of the categories. The seperated marital status is the least variable according to this plots, but in general, our variability condition can be checked.
+
+After our log transformation of the data we can see that most of our data has become less skewed and the normality assumption for our ANOVA test can be fulfilled more convincingly. 
+
+* * *
+
+## Part 4: Inference
+
+As our last part we will perform our one way ANOVA test to check for statiscally significant differences between the categories of the marital status variable.
+
+This will be the hypothesis being tested in the ANOVA test:
+
+- H0 : There is no difference between the means of the different marital status.
+- Ha: There is a statistically significant difference between the different marital status. 
+
+```{r}
+sei.aov <- aov(logsei ~ marital, data = seianalysis)
+
+summary(sei.aov)
+
+```
+
+As we can see, our ANOVA test has an F statistic value for 138.2, and a p value of 2e-16, which means that we reject our null hypothesis in favor of our alternative hypothesis: there are statistically significant differences for the socieconomic index in the different marital statuses. No confidence interval can be calculated for the difference between multiple means. 
+
+An ANOVA test only checks for differences between any of the groups. To know which categories for our marital status variable are statistically different between each other we must conduct pairwise t-test with an adjusted p value using a Bonferroni adjustment.
+
+H0 : No difference in means between two groups being compared
+Ha: Difference in means between two groups being compared
+
+```{r}
+pairwise.t.test( seianalysis$logsei, seianalysis$marital, p.adjust.method = "bonferroni", alternative = "two.sided")
+
+
+```
+Our significance level corrected by corrected by the Bonferroni method gives us a p value < 0.005 in order to consider any difference as statistacally significant. All but two pairwise comparisons have statistically significant differences:
+
+Seperated vs Widowed with a p-value 1.00
+
+Never Married vs Divorced with a p-value 0.021
+
+This shows that marital status does have an impact on the mean socioeconomic index for the US population according to the sample taken for the General Social Survey through 1988 to 2010. Being seperated vs being widowed, as well as having never married or being divorced, showed no statistically significant difference in their means after performing a log10 transformation.
+
+
+
